@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microscope ปริศนากล้องจุลทรรศน์</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN TOKENS — pastel lab palette
+   ============================================================ */
+:root{
+  --lemon:#FFE9A8;   --lemon-d:#F5C842;
+  --lilac:#CDB6F0;   --lilac-d:#8B5FD6;
+  --blush:#F9BCD8;   --blush-d:#E8619D;
+  --sky:#A9D9F5;     --sky-d:#3B9FE0;
+  --mint:#B7E4C7;    --mint-d:#2E9E5B;
+  --ink:#3D3557;     --ink-2:#6B5F8C;
+  --white:#FFFFFF;
+  --glass:rgba(255,255,255,.82);
+  --glass-line:rgba(255,255,255,.65);
+  --shadow:0 10px 34px rgba(61,53,87,.22);
+  --font-d:'Mitr',sans-serif;
+  --font-b:'Sarabun',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:var(--font-b);
+  background:#1a1430;
+  color:var(--ink);
+  -webkit-user-select:none;user-select:none;
+  touch-action:none;
+}
+canvas,video{display:block}
+
+/* ============================================================
+   STAGE — camera + game canvas stack
+   ============================================================ */
+#stage{position:fixed;inset:0;overflow:hidden;background:#1a1430}
+#cam{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;transform:scaleX(-1);
+}
+#fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+/* soft pastel wash over the camera so text stays readable */
+#stage::after{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:
+    radial-gradient(120% 80% at 50% 0%,rgba(205,182,240,.45),transparent 60%),
+    radial-gradient(100% 70% at 50% 100%,rgba(169,217,245,.42),transparent 62%),
+    linear-gradient(180deg,rgba(255,233,168,.14),rgba(249,188,216,.16));
+  mix-blend-mode:soft-light;
+}
+#hud{position:absolute;inset:0;z-index:3;pointer-events:none}
+
+/* ============================================================
+   HUD — question banner
+   ============================================================ */
+#qbar{
+  position:absolute;top:0;left:0;right:0;
+  padding:14px 16px 18px;
+  background:linear-gradient(180deg,rgba(61,53,87,.55),rgba(61,53,87,0));
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+}
+.qmeta{
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--font-d);font-size:12px;font-weight:500;
+  color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+.qchip{
+  background:var(--lilac);color:var(--ink);
+  padding:3px 12px;border-radius:999px;
+  font-size:12px;font-weight:600;
+  box-shadow:0 2px 10px rgba(0,0,0,.2);
+}
+.qchip.topic{background:var(--lemon)}
+#qtext{
+  max-width:min(900px,94vw);
+  text-align:center;
+  font-family:var(--font-d);font-weight:500;
+  font-size:clamp(15px,2.1vw,24px);line-height:1.5;
+  color:#fff;
+  text-shadow:0 2px 4px rgba(0,0,0,.75),0 4px 22px rgba(0,0,0,.55);
+  background:rgba(61,53,87,.42);
+  border:1.5px solid rgba(255,255,255,.35);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  padding:10px 22px;border-radius:18px;
+}
+
+/* ============================================================
+   HUD — stat pills
+   ============================================================ */
+#stats{
+  position:absolute;left:16px;bottom:16px;right:16px;
+  display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
+}
+.pill{
+  display:flex;align-items:center;gap:9px;
+  background:var(--glass);border:2px solid var(--glass-line);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border-radius:16px;padding:8px 14px;box-shadow:var(--shadow);
+}
+.pill .ico{
+  width:30px;height:30px;border-radius:10px;
+  display:grid;place-items:center;font-size:15px;
+}
+.pill .lab{font-size:10px;color:var(--ink-2);font-weight:600;letter-spacing:.4px}
+.pill .val{font-family:var(--font-d);font-size:19px;font-weight:600;line-height:1;color:var(--ink)}
+#p-score .ico{background:var(--lemon)}
+#p-time .ico{background:var(--sky)}
+#p-prog .ico{background:var(--blush)}
+#p-streak .ico{background:var(--mint)}
+.pill.warn{animation:pulseWarn .7s ease-in-out infinite}
+@keyframes pulseWarn{50%{background:#FFD9E4;transform:scale(1.05)}}
+
+#timebar{
+  position:absolute;left:0;right:0;bottom:0;height:6px;
+  background:rgba(61,53,87,.35);
+}
+#readnote{
+  margin-top:8px;display:none;align-items:center;gap:8px;
+  font-size:15px;font-weight:600;color:var(--ink);
+  background:linear-gradient(90deg,var(--lemon),var(--blush));
+  padding:7px 16px;border-radius:999px;
+  box-shadow:0 3px 12px rgba(0,0,0,.10);
+  animation:readpulse 1.6s ease-in-out infinite;
+}
+#readnote.on{display:inline-flex}
+#readnote .dot{
+  width:9px;height:9px;border-radius:50%;background:var(--lilac-d);
+  animation:readpulse .9s ease-in-out infinite;
+}
+@keyframes readpulse{50%{opacity:.55}}
+#p-time.reading .ico{background:var(--lemon)}
+#p-time.reading .val{color:var(--lilac-d)}
+#timefill{
+  height:100%;width:100%;
+  background:linear-gradient(90deg,var(--mint),var(--sky),var(--lilac));
+  transition:width .25s linear;
+}
+
+/* score float */
+.float{
+  position:absolute;font-family:var(--font-d);font-weight:700;
+  font-size:36px;pointer-events:none;z-index:6;
+  text-shadow:0 3px 12px rgba(0,0,0,.45);
+  animation:floatUp 1s ease-out forwards;
+}
+@keyframes floatUp{
+  0%{transform:translate(-50%,-50%) scale(.5);opacity:0}
+  25%{transform:translate(-50%,-70%) scale(1.25);opacity:1}
+  100%{transform:translate(-50%,-160%) scale(1);opacity:0}
+}
+
+/* ============================================================
+   PANELS — start / summary / error
+   ============================================================ */
+.panel{
+  position:absolute;inset:0;z-index:10;
+  display:grid;place-items:center;padding:20px;
+  background:
+    radial-gradient(80% 60% at 50% 0%,rgba(205,182,240,.55),transparent),
+    linear-gradient(160deg,#241a45,#3a2a63 55%,#4b2f5e);
+  overflow-y:auto;
+}
+.panel.hide{display:none}
+.card{
+  width:min(760px,100%);
+  background:var(--glass);
+  border:3px solid var(--white);
+  border-radius:28px;padding:clamp(20px,3.4vw,38px);
+  box-shadow:0 26px 70px rgba(0,0,0,.5);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  text-align:center;
+}
+.logo{
+  display:inline-flex;align-items:center;gap:12px;
+  margin-bottom:6px;
+}
+.logo .scope{
+  width:56px;height:56px;border-radius:18px;
+  background:linear-gradient(140deg,var(--lemon),var(--blush));
+  display:grid;place-items:center;font-size:30px;
+  box-shadow:0 8px 22px rgba(232,97,157,.4);
+  animation:bob 3s ease-in-out infinite;
+}
+@keyframes bob{50%{transform:translateY(-6px) rotate(-4deg)}}
+h1{
+  font-family:var(--font-d);font-weight:600;
+  font-size:clamp(24px,4.2vw,42px);line-height:1.2;
+  color:var(--ink);letter-spacing:-.5px;
+}
+h1 .en{
+  background:linear-gradient(90deg,var(--lilac-d),var(--blush-d));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.tag{color:var(--ink-2);font-size:14px;margin-top:8px;line-height:1.7}
+
+.rules{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;margin:22px 0;text-align:left;
+}
+.rule{
+  background:var(--white);border-radius:16px;padding:13px 15px;
+  border-left:5px solid var(--lilac);
+  box-shadow:0 4px 14px rgba(61,53,87,.1);
+}
+.rule:nth-child(2){border-left-color:var(--blush)}
+.rule:nth-child(3){border-left-color:var(--sky)}
+.rule:nth-child(4){border-left-color:var(--lemon-d)}
+.rule b{display:block;font-family:var(--font-d);font-size:14px;font-weight:500;margin-bottom:3px;color:var(--ink)}
+.rule span{font-size:12px;color:var(--ink-2);line-height:1.55}
+
+.btn{
+  font-family:var(--font-d);font-weight:500;font-size:18px;
+  border:none;border-radius:999px;padding:15px 42px;cursor:pointer;
+  background:linear-gradient(135deg,var(--lilac-d),var(--blush-d));
+  color:#fff;box-shadow:0 10px 28px rgba(139,95,214,.5);
+  transition:transform .16s cubic-bezier(.34,1.56,.64,1),box-shadow .16s;
+}
+.btn:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 16px 36px rgba(139,95,214,.6)}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn:focus-visible{outline:3px solid var(--lemon);outline-offset:3px}
+.btn.ghost{
+  background:var(--white);color:var(--ink);
+  box-shadow:0 6px 18px rgba(61,53,87,.18);
+}
+.btn.ghost:hover{box-shadow:0 12px 26px rgba(61,53,87,.26)}
+.btn[disabled]{opacity:.55;cursor:not-allowed;transform:none}
+.btnrow{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+.hint{font-size:12px;color:var(--ink-2);margin-top:14px;line-height:1.6}
+
+/* loading */
+#load{margin-top:18px;display:none}
+#load.on{display:block}
+.bar{height:8px;background:#EFE7FB;border-radius:99px;overflow:hidden;margin-top:10px}
+.bar i{display:block;height:100%;width:30%;border-radius:99px;
+  background:linear-gradient(90deg,var(--lemon),var(--blush),var(--lilac),var(--sky));
+  animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-30%}100%{margin-left:100%}}
+#loadtxt{font-size:13px;color:var(--ink-2)}
+
+/* summary */
+.bigscore{
+  font-family:var(--font-d);font-weight:700;
+  font-size:clamp(48px,10vw,84px);line-height:1;
+  background:linear-gradient(135deg,var(--lilac-d),var(--blush-d),var(--sky-d));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  margin:6px 0;
+}
+.grade{
+  display:inline-block;font-family:var(--font-d);font-size:16px;font-weight:500;
+  padding:7px 22px;border-radius:999px;background:var(--lemon);color:var(--ink);
+  margin-bottom:14px;
+}
+.sgrid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;margin:18px 0;
+}
+.sbox{background:var(--white);border-radius:14px;padding:12px 8px;box-shadow:0 4px 14px rgba(61,53,87,.1)}
+.sbox b{display:block;font-family:var(--font-d);font-size:24px;font-weight:600;color:var(--ink)}
+.sbox span{font-size:11px;color:var(--ink-2)}
+.sbox.ok b{color:var(--mint-d)} .sbox.no b{color:var(--blush-d)}
+.review{
+  max-height:210px;overflow-y:auto;text-align:left;
+  background:var(--white);border-radius:16px;padding:6px;margin:6px 0 18px;
+}
+.rv{display:flex;gap:9px;padding:9px 10px;border-bottom:1px solid #F1ECFB;font-size:12px;line-height:1.55}
+.rv:last-child{border:none}
+.rv .m{flex:0 0 auto;width:20px;height:20px;border-radius:7px;display:grid;place-items:center;font-size:11px;color:#fff}
+.rv.ok .m{background:var(--mint-d)} .rv.no .m{background:var(--blush-d)}
+.rv p{color:var(--ink);font-weight:600;margin-bottom:2px}
+.rv small{color:var(--ink-2);display:block}
+.review::-webkit-scrollbar{width:7px}
+.review::-webkit-scrollbar-thumb{background:var(--lilac);border-radius:99px}
+
+.err{background:#FFE1EC;border:2px solid var(--blush);border-radius:14px;
+  padding:12px 14px;font-size:13px;color:#8E2B55;margin-top:14px;text-align:left;line-height:1.6;display:none}
+.err.on{display:block}
+
+/* status toast */
+#toast{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:5;font-family:var(--font-d);font-weight:600;
+  font-size:clamp(26px,5vw,52px);color:#fff;pointer-events:none;opacity:0;
+  text-shadow:0 4px 20px rgba(0,0,0,.6);text-align:center;
+}
+#toast.show{animation:toastPop 1.25s ease-out}
+@keyframes toastPop{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}
+  18%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}
+  70%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-58%) scale(1)}
+}
+
+/* camera status badge */
+#camtag{
+  position:absolute;top:50%;left:16px;z-index:4;transform:translateY(-50%);
+  background:var(--glass);border:2px solid var(--white);border-radius:14px;
+  padding:9px 13px;font-size:11px;color:var(--ink-2);box-shadow:var(--shadow);
+  max-width:170px;line-height:1.5;display:none;
+}
+#camtag.on{display:block}
+#camtag b{font-family:var(--font-d);color:var(--ink);display:block;font-size:12px}
+
+@media (max-width:600px){
+  #qtext{font-size:14px;padding:8px 14px}
+  .pill{padding:6px 10px;gap:6px}
+  .pill .ico{width:24px;height:24px;font-size:12px}
+  .pill .val{font-size:15px}
+  .pill .lab{font-size:9px}
+  #stats{left:8px;right:8px;bottom:12px;gap:6px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" playsinline autoplay muted></video>
+  <canvas id="fx"></canvas>
+
+  <div id="camtag"><b>กล้องพร้อม</b>ยกมือขึ้นให้เห็นในกรอบ แล้วฟันก้อนคำตอบ</div>
+
+  <div id="hud">
+    <div id="qbar">
+      <div class="qmeta">
+        <span class="qchip" id="qnum">ข้อ 1/10</span>
+        <span class="qchip topic" id="qtopic">—</span>
+      </div>
+      <div id="qtext">กำลังโหลดคำถาม…</div>
+      <div id="readnote"><span class="dot"></span>อ่านคำถามให้ดี — คำตอบกำลังจะลอยขึ้นมา</div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div id="stats">
+      <div class="pill" id="p-score">
+        <div class="ico">🏆</div>
+        <div><div class="lab">คะแนน</div><div class="val" id="v-score">0</div></div>
+      </div>
+      <div class="pill" id="p-streak">
+        <div class="ico">🔥</div>
+        <div><div class="lab">ต่อเนื่อง</div><div class="val" id="v-streak">0</div></div>
+      </div>
+      <div class="pill" id="p-prog">
+        <div class="ico">🔬</div>
+        <div><div class="lab">ความคืบหน้า</div><div class="val" id="v-prog">0/10</div></div>
+      </div>
+      <div class="pill" id="p-time">
+        <div class="ico">⏱️</div>
+        <div><div class="lab" id="timelabel">อ่านคำถาม</div><div class="val" id="v-time">15</div></div>
+      </div>
+    </div>
+
+    <div id="timebar"><div id="timefill"></div></div>
+  </div>
+</div>
+
+<!-- ============ START PANEL ============ -->
+<div class="panel" id="pnl-start">
+  <div class="card">
+    <div class="logo"><div class="scope">🔬</div></div>
+    <h1><span class="en">Microscope</span><br>ปริศนากล้องจุลทรรศน์</h1>
+    <p class="tag">เกม AR ฟันคำตอบด้วยมือผ่านเว็บแคม · ชีววิทยา ม.4<br>ยกมือขึ้นแล้วฟันก้อนคำตอบที่ลอยขึ้นมาให้ถูกข้อ</p>
+
+    <div class="rules">
+      <div class="rule"><b>ฟันด้วยมือ</b><span>ขยับฝ่ามือหรือปลายนิ้วให้ผ่านก้อนคำตอบ ระบบจะนับเป็นการเลือกทันที</span></div>
+      <div class="rule"><b>ตอบถูก +10</b><span>ฟันโดนคำตอบที่ถูกต้อง ได้ 10 คะแนน และไปข้อถัดไป</span></div>
+      <div class="rule"><b>ตอบผิด −5</b><span>ฟันโดนตัวลวง เสีย 5 คะแนน ก้อนที่เหลือยังฟันต่อได้</span></div>
+      <div class="rule"><b>20 วินาที/ข้อ</b><span>หมดเวลาแล้วข้ามไปข้อถัดไปโดยไม่หักคะแนน</span></div>
+    </div>
+
+    <div class="btnrow">
+      <button class="btn" id="btn-start">เปิดกล้องแล้วเริ่มเล่น</button>
+    </div>
+    <div id="load"><div id="loadtxt">กำลังขอสิทธิ์ใช้กล้อง…</div><div class="bar"><i></i></div></div>
+    <div class="err" id="err-start"></div>
+    <p class="hint">ใช้ได้กับ Google Chrome และ Microsoft Edge · ต้องอนุญาตให้เว็บไซต์ใช้กล้อง<br>ภาพจากกล้องประมวลผลในเครื่องของคุณเท่านั้น ไม่มีการอัปโหลดหรือบันทึก</p>
+  </div>
+</div>
+
+<!-- ============ SUMMARY PANEL ============ -->
+<div class="panel hide" id="pnl-end">
+  <div class="card">
+    <div class="logo"><div class="scope" id="end-emoji">🎉</div></div>
+    <h1 id="end-title">สรุปผลการเล่น</h1>
+    <div class="bigscore" id="end-score">0</div>
+    <div class="grade" id="end-grade">—</div>
+
+    <div class="sgrid">
+      <div class="sbox ok"><b id="end-ok">0</b><span>ตอบถูก</span></div>
+      <div class="sbox no"><b id="end-no">0</b><span>ตอบผิด</span></div>
+      <div class="sbox"><b id="end-skip">0</b><span>หมดเวลา</span></div>
+      <div class="sbox"><b id="end-acc">0%</b><span>ความแม่นยำ</span></div>
+      <div class="sbox"><b id="end-best">0</b><span>ฟันถูกต่อเนื่อง</span></div>
+    </div>
+
+    <div class="review" id="end-review"></div>
+
+    <div class="btnrow">
+      <button class="btn" id="btn-again">เล่นอีกครั้ง</button>
+      <button class="btn ghost" id="btn-home">กลับหน้าแรก</button>
+    </div>
+    <p class="hint">ทบทวนข้อที่ตอบผิดได้จากรายการด้านบน · เฉลยทั้งหมดอยู่ในไฟล์ PDF ชุดคำถาม</p>
+  </div>
+</div>
+<script type="module">
+/* ===== MODULE 0 · QUESTION BANK ===== */
+const QUESTIONS = [
+ {
+  "q": "ใครเป็นผู้ประดิษฐ์กล้องจุลทรรศน์ขึ้นมาในปี พ.ศ. 2133 ซึ่งมีกำลังขยาย 3–10 เท่า?",
+  "c": [
+   "Zacharias Janssen",
+   "Robert Hooke",
+   "Antoni van Leeuwenhoek",
+   "Louis Pasteur",
+   "Matthias Schleiden"
+  ],
+  "a": 0,
+  "e": "พ.ศ. 2133 Zacharias Janssen ประดิษฐ์กล้องจุลทรรศน์ที่มีกำลังขยาย 3–10 เท่า",
+  "t": "ประวัติกล้องจุลทรรศน์"
+ },
+ {
+  "q": "นักวิทยาศาสตร์คนใดพบผนังเซลล์ครั้งแรกจากเซลล์เปลือกไม้โอ๊ค และนิยามคำว่า เซลล์ (Cell)?",
+  "c": [
+   "Robert Hooke",
+   "Zacharias Janssen",
+   "Antoni van Leeuwenhoek",
+   "Charles Darwin",
+   "Theodor Schwann"
+  ],
+  "a": 0,
+  "e": "ปี พ.ศ. 2208 Robert Hooke พบผนังเซลล์จากเซลล์เปลือกไม้โอ๊ค และนิยามคำว่า เซลล์",
+  "t": "ประวัติกล้องจุลทรรศน์"
+ },
+ {
+  "q": "Antoni van Leeuwenhoek สร้างกล้องจุลทรรศน์เลนส์เดียวที่มีกำลังขยายเท่าใด?",
+  "c": [
+   "200 เท่า",
+   "10 เท่า",
+   "50 เท่า",
+   "1,000 เท่า",
+   "400 เท่า"
+  ],
+  "a": 0,
+  "e": "พ.ศ. 2217 Antoni van Leeuwenhoek สร้างกล้องจุลทรรศน์เลนส์เดียวกำลังขยาย 200 เท่า",
+  "t": "ประวัติกล้องจุลทรรศน์"
+ },
+ {
+  "q": "Antoni van Leeuwenhoek ใช้กล้องจุลทรรศน์ของเขาอธิบายลักษณะของสิ่งมีชีวิตกลุ่มใด?",
+  "c": [
+   "โพรทิสต์และแบคทีเรีย",
+   "เห็ดราและยีสต์",
+   "ไวรัสและไวรอยด์",
+   "สาหร่ายสีเขียวแกมน้ำเงิน",
+   "ไมโทคอนเดรียและคลอโรพลาสต์"
+  ],
+  "a": 0,
+  "e": "เขาได้อธิบายลักษณะของโพรทิสต์และแบคทีเรีย",
+  "t": "ประวัติกล้องจุลทรรศน์"
+ },
+ {
+  "q": "กล้องจุลทรรศน์แบ่งออกเป็น 2 ชนิดหลัก ได้แก่ข้อใด?",
+  "c": [
+   "กล้องจุลทรรศน์ใช้แสง และ กล้องจุลทรรศน์อิเล็กตรอน",
+   "กล้องเชิงประกอบ และ กล้องสเตอริโอ",
+   "กล้อง TEM และ กล้อง SEM",
+   "กล้องเลนส์เดียว และ กล้องสองเลนส์",
+   "กล้องกำลังขยายต่ำ และ กล้องกำลังขยายสูง"
+  ],
+  "a": 0,
+  "e": "แบ่งเป็นกล้องจุลทรรศน์ใช้แสง (light microscope) และกล้องจุลทรรศน์อิเล็กตรอน (electron microscope)",
+  "t": "ชนิดของกล้องจุลทรรศน์"
+ },
+ {
+  "q": "กล้องจุลทรรศน์ใช้แสงแบ่งออกเป็น 2 ชนิด ได้แก่ข้อใด?",
+  "c": [
+   "compound microscope และ stereoscopic microscope",
+   "TEM และ SEM",
+   "compound microscope และ TEM",
+   "stereoscopic microscope และ SEM",
+   "simple microscope และ compound microscope"
+  ],
+  "a": 0,
+  "e": "จำแนกเป็นกล้องใช้แสงเชิงประกอบ (compound) และกล้องใช้แสงแบบสเตอริโอ (stereoscopic)",
+  "t": "กล้องจุลทรรศน์ใช้แสง"
+ },
+ {
+  "q": "แสงในกล้องจุลทรรศน์ใช้แสงเดินทางผ่านส่วนใดเป็นลำดับที่ถูกต้อง?",
+  "c": [
+   "แหล่งกำเนิดแสง → เลนส์รวมแสง → ตัวอย่าง → เลนส์ใกล้วัตถุ → เลนส์ใกล้ตา",
+   "แหล่งกำเนิดแสง → เลนส์ใกล้ตา → ตัวอย่าง → เลนส์รวมแสง → เลนส์ใกล้วัตถุ",
+   "ตัวอย่าง → แหล่งกำเนิดแสง → เลนส์ใกล้วัตถุ → เลนส์รวมแสง → เลนส์ใกล้ตา",
+   "เลนส์ใกล้วัตถุ → เลนส์รวมแสง → แหล่งกำเนิดแสง → ตัวอย่าง → เลนส์ใกล้ตา",
+   "แหล่งกำเนิดแสง → ตัวอย่าง → เลนส์ใกล้ตา → เลนส์รวมแสง → เลนส์ใกล้วัตถุ"
+  ],
+  "a": 0,
+  "e": "แสงผ่านเลนส์รวมแสง ไปยังตัวอย่าง แล้วไปยังเลนส์ใกล้วัตถุและเลนส์ใกล้ตา",
+  "t": "กล้องจุลทรรศน์ใช้แสง"
+ },
+ {
+  "q": "ภาพที่ได้จากกล้องจุลทรรศน์ใช้แสงเชิงประกอบมีลักษณะอย่างไร?",
+  "c": [
+   "ภาพ 2 มิติ เสมือนหัวกลับ และกลับจากด้านซ้ายของวัตถุเป็นขวา",
+   "ภาพ 3 มิติ เสมือนหัวตั้ง และไม่กลับซ้ายขวา",
+   "ภาพ 2 มิติ ขาวดำ บนจอรับภาพ",
+   "ภาพ 3 มิติ ขาวดำ บนจอรับภาพ",
+   "ภาพจริงหัวตั้ง และกลับซ้ายขวา"
+  ],
+  "a": 0,
+  "e": "compound microscope ให้ภาพ 2 มิติเสมือนหัวกลับและกลับซ้ายเป็นขวา",
+  "t": "compound microscope"
+ },
+ {
+  "q": "กล้องจุลทรรศน์ใช้แสงเชิงประกอบโดยทั่วไปมีกำลังขยายสูงสุดเท่าใด?",
+  "c": [
+   "1,000 เท่า",
+   "40 เท่า",
+   "200 เท่า",
+   "400,000 เท่า",
+   "1 ล้านเท่า"
+  ],
+  "a": 0,
+  "e": "โดยทั่วไปมีกำลังขยายสูงสุด 1,000 เท่า",
+  "t": "compound microscope"
+ },
+ {
+  "q": "กล้องจุลทรรศน์ใช้แสงเชิงประกอบเหมาะกับการศึกษาสิ่งใดมากที่สุด?",
+  "c": [
+   "โครงสร้างภายในของสิ่งมีชีวิตระดับเนื้อเยื่อและเซลล์",
+   "โครงสร้างภายนอกของวัตถุที่ทึบแสง",
+   "พื้นผิวของตัวอย่างที่เคลือบทองคำ",
+   "โครงสร้างภายในของตัวอย่างที่ย้อมโลหะหนัก",
+   "สิ่งมีชีวิตที่ตายแล้วเท่านั้น"
+  ],
+  "a": 0,
+  "e": "ใช้ศึกษาโครงสร้างภายในของสิ่งมีชีวิตระดับเนื้อเยื่อและเซลล์ รวมถึงการจัดเรียงเซลล์",
+  "t": "compound microscope"
+ },
+ {
+  "q": "ส่วนใดทำหน้าที่ขยายภาพจากเลนส์ใกล้วัตถุให้มีขนาดใหญ่ขึ้น?",
+  "c": [
+   "เลนส์ใกล้ตา (eyepiece / ocular lens)",
+   "เลนส์ใกล้วัตถุ (objective lens)",
+   "เลนส์รวมแสง (condenser lens)",
+   "ม่านปรับแสง (iris diaphragm)",
+   "จานหมุน (revolving nosepiece)"
+  ],
+  "a": 0,
+  "e": "เลนส์ใกล้ตาทำหน้าที่ขยายภาพจากเลนส์ใกล้วัตถุให้ใหญ่ขึ้น",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "จานหมุน (revolving nosepiece) ทำหน้าที่ใด?",
+  "c": [
+   "ใช้หมุนเปลี่ยนเลนส์ใกล้วัตถุ",
+   "ใช้รวมแสงจากแหล่งกำเนิดแสง",
+   "ใช้เลื่อนแท่นวางวัตถุขึ้นลง",
+   "ใช้บังคับปริมาณแสงที่เข้าเลนส์",
+   "ใช้กดสไลด์ให้ติดแน่นกับแท่นวางวัตถุ"
+  ],
+  "a": 0,
+  "e": "จานหมุนใช้หมุนเปลี่ยนเลนส์ใกล้วัตถุ",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ม่านปรับแสง (iris diaphragm) มีหน้าที่อย่างไร?",
+  "c": [
+   "บังคับแสงให้เข้าเลนส์รวมแสงมากน้อยตามต้องการ",
+   "รวมแสงจากแหล่งกำเนิดแสง",
+   "ให้กำเนิดแสงแก่กล้อง",
+   "ขยายภาพของวัตถุ",
+   "รองรับน้ำหนักส่วนอื่นๆ ของกล้อง"
+  ],
+  "a": 0,
+  "e": "ม่านปรับแสงใช้บังคับแสงให้เข้าเลนส์รวมแสงมากน้อยตามต้องการ",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ปุ่มปรับภาพหยาบ (coarse adjustment knob) ใช้กับเลนส์ใกล้วัตถุที่มีกำลังขยายเท่าใด?",
+  "c": [
+   "4x และ 10x",
+   "40x และ 100x",
+   "100x เท่านั้น",
+   "1,000x",
+   "200x และ 400x"
+  ],
+  "a": 0,
+  "e": "ปุ่มปรับภาพหยาบใช้กับเลนส์ใกล้วัตถุกำลังขยายต่ำ คือ 4x และ 10x",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ปุ่มปรับภาพละเอียด (fine adjustment knob) ใช้กับเลนส์ใกล้วัตถุกำลังขยายใด?",
+  "c": [
+   "40x และ 100x",
+   "4x และ 10x",
+   "3x และ 10x",
+   "1x และ 2x",
+   "200x และ 1,000x"
+  ],
+  "a": 0,
+  "e": "ปุ่มปรับภาพละเอียดใช้กับเลนส์ใกล้วัตถุกำลังขยายสูง คือ 40X และ 100X",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ส่วนใดของกล้องจุลทรรศน์ที่ใช้จับเพื่อยกเคลื่อนย้ายกล้อง?",
+  "c": [
+   "แขน (arm)",
+   "ลำกล้อง (body tube)",
+   "ฐาน (base)",
+   "แท่นวางวัตถุ (stage)",
+   "จานหมุน (revolving nosepiece)"
+  ],
+  "a": 0,
+  "e": "แขน (arm) เป็นส่วนที่ใช้จับเพื่อยกเคลื่อนย้ายกล้องจุลทรรศน์",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ที่หนีบสไลด์ (stage clip) มีลักษณะและหน้าที่อย่างไร?",
+  "c": [
+   "เหล็กสปริง 2 อัน ใช้กดสไลด์ให้ติดแน่นกับแท่นวางวัตถุ",
+   "เลนส์ 2 ชิ้น ใช้รวมแสงเข้าสู่ตัวอย่าง",
+   "ปุ่ม 2 ปุ่ม ใช้เลื่อนแท่นวางวัตถุ",
+   "แผ่นโลหะใช้รองรับน้ำหนักของกล้อง",
+   "ม่านโลหะใช้ปรับปริมาณแสง"
+  ],
+  "a": 0,
+  "e": "ที่หนีบสไลด์เป็นเหล็กสปริง 2 อัน ติดบนแท่นวางวัตถุเพื่อกดสไลด์ให้ติดแน่น",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ฐาน (base) ของกล้องจุลทรรศน์ทำหน้าที่ใด?",
+  "c": [
+   "เป็นส่วนล่างสุดของกล้อง ทำหน้าที่รองรับน้ำหนักส่วนอื่นๆ",
+   "ใช้ปรับระยะระหว่างวัตถุกับเลนส์ใกล้วัตถุ",
+   "ใช้หมุนเปลี่ยนเลนส์ใกล้วัตถุ",
+   "ทำหน้าที่รวมแสงจากแหล่งกำเนิดแสง",
+   "ใช้รองรับสไลด์ตัวอย่าง"
+  ],
+  "a": 0,
+  "e": "ฐานเป็นส่วนล่างสุดของกล้อง ทำหน้าที่รองรับน้ำหนักส่วนอื่นๆ",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ภาพที่ได้จากกล้องจุลทรรศน์ใช้แสงแบบสเตอริโอมีลักษณะอย่างไร?",
+  "c": [
+   "ภาพ 3 มิติ เสมือนหัวตั้ง และไม่กลับจากด้านซ้ายของวัตถุเป็นขวา",
+   "ภาพ 2 มิติ เสมือนหัวกลับ และกลับซ้ายเป็นขวา",
+   "ภาพ 3 มิติ ขาวดำ บนจอรับภาพ",
+   "ภาพ 2 มิติ ขาวดำ บนจอรับภาพ",
+   "ภาพจริงหัวกลับ และไม่กลับซ้ายขวา"
+  ],
+  "a": 0,
+  "e": "stereoscopic microscope ให้ภาพ 3 มิติเสมือนหัวตั้งและไม่กลับซ้ายขวา",
+  "t": "stereoscopic microscope"
+ },
+ {
+  "q": "กล้องจุลทรรศน์ใช้แสงแบบสเตอริโอโดยทั่วไปมีกำลังขยายประมาณเท่าใด?",
+  "c": [
+   "30 – 40 เท่า",
+   "3 – 10 เท่า",
+   "200 เท่า",
+   "1,000 เท่า",
+   "400 – 1,000 เท่า"
+  ],
+  "a": 0,
+  "e": "มีกำลังขยายประมาณ 30–40 เท่า ซึ่งต่ำกว่ากล้องจุลทรรศน์เชิงประกอบ",
+  "t": "stereoscopic microscope"
+ },
+ {
+  "q": "กล้องจุลทรรศน์ใช้แสงแบบสเตอริโอใช้ศึกษาสิ่งใด?",
+  "c": [
+   "โครงสร้างภายนอกของวัตถุที่ทึบแสง",
+   "โครงสร้างภายในของเซลล์ที่บางมาก",
+   "พื้นผิวของตัวอย่างที่เคลือบทองคำ",
+   "ตัวอย่างที่ย้อมด้วยสารประกอบโลหะหนัก",
+   "การจัดเรียงตัวของเซลล์ในระดับเนื้อเยื่อ"
+  ],
+  "a": 0,
+  "e": "ใช้ศึกษาโครงสร้างภายนอกของวัตถุที่ทึบแสง",
+  "t": "stereoscopic microscope"
+ },
+ {
+  "q": "ปุ่มปรับภาพ (adjustment knob) ของกล้องสเตอริโอทำหน้าที่ใด?",
+  "c": [
+   "ใช้ปรับระยะระหว่างวัตถุกับเลนส์ใกล้วัตถุ",
+   "ใช้หมุนเปลี่ยนเลนส์ใกล้วัตถุ",
+   "ใช้บังคับปริมาณแสงเข้าเลนส์รวมแสง",
+   "ใช้เลื่อนแท่นวางวัตถุไปด้านข้าง",
+   "ใช้ขยายภาพจากเลนส์ใกล้วัตถุ"
+  ],
+  "a": 0,
+  "e": "ปุ่มปรับภาพใช้ปรับระยะระหว่างวัตถุกับเลนส์ใกล้วัตถุ",
+  "t": "stereoscopic microscope"
+ },
+ {
+  "q": "กำลังขยายของกล้องจุลทรรศน์คำนวณจากสูตรใด?",
+  "c": [
+   "กำลังขยายเลนส์ใกล้ตา × กำลังขยายเลนส์ใกล้วัตถุ",
+   "กำลังขยายเลนส์ใกล้ตา + กำลังขยายเลนส์ใกล้วัตถุ",
+   "กำลังขยายเลนส์ใกล้วัตถุ ÷ กำลังขยายเลนส์ใกล้ตา",
+   "ขนาดของวัตถุ ÷ ขนาดของภาพ",
+   "กำลังขยายเลนส์รวมแสง × กำลังขยายเลนส์ใกล้ตา"
+  ],
+  "a": 0,
+  "e": "กำลังขยายของกล้องจุลทรรศน์ = กำลังขยายเลนส์ใกล้ตา × กำลังขยายเลนส์ใกล้วัตถุ",
+  "t": "การคำนวณ"
+ },
+ {
+  "q": "ถ้าเลนส์ใกล้ตามีกำลังขยาย 10x และเลนส์ใกล้วัตถุมีกำลังขยาย 40x กล้องจะมีกำลังขยายเท่าใด?",
+  "c": [
+   "400 เท่า",
+   "50 เท่า",
+   "4 เท่า",
+   "1,000 เท่า",
+   "140 เท่า"
+  ],
+  "a": 0,
+  "e": "10 × 40 = 400 เท่า",
+  "t": "การคำนวณ"
+ },
+ {
+  "q": "กำลังขยายของภาพคำนวณจากอัตราส่วนใด?",
+  "c": [
+   "ขนาดของภาพ ÷ ขนาดของวัตถุ",
+   "ขนาดของวัตถุ ÷ ขนาดของภาพ",
+   "ขนาดของภาพ × ขนาดของวัตถุ",
+   "ขนาดของภาพ − ขนาดของวัตถุ",
+   "ขนาดของวัตถุ × กำลังขยายเลนส์ใกล้ตา"
+  ],
+  "a": 0,
+  "e": "กำลังขยายของภาพ = ขนาดของภาพ / ขนาดของวัตถุ",
+  "t": "การคำนวณ"
+ },
+ {
+  "q": "กล้องจุลทรรศน์อิเล็กตรอนมีกำลังขยายสูงมากเพราะเหตุใด?",
+  "c": [
+   "ใช้ลำอิเล็กตรอนที่มีคลื่นความถี่สูงแทนแสง",
+   "ใช้เลนส์แก้วที่มีความหนามากกว่าปกติ",
+   "ใช้แสงจากหลอดไฟที่สว่างมาก",
+   "ใช้เลนส์ใกล้ตาหลายชั้นซ้อนกัน",
+   "ใช้กระจกสะท้อนแสงเพิ่มความเข้ม"
+  ],
+  "a": 0,
+  "e": "กล้องอิเล็กตรอนใช้ลำอิเล็กตรอนที่มีคลื่นความถี่สูงแทนแสง จึงเห็นรายละเอียดได้มาก",
+  "t": "กล้องอิเล็กตรอน"
+ },
+ {
+  "q": "ชุดเลนส์ที่ใช้ในกล้องจุลทรรศน์อิเล็กตรอนเป็นชนิดใด?",
+  "c": [
+   "เลนส์แม่เหล็กไฟฟ้า",
+   "เลนส์แก้วนูน",
+   "เลนส์พลาสติกเว้า",
+   "เลนส์ควอตซ์",
+   "เลนส์รวมแสงแบบกระจก"
+  ],
+  "a": 0,
+  "e": "ประกอบด้วยแหล่งกำเนิดอิเล็กตรอนซึ่งปล่อยลำอิเล็กตรอนผ่านชุดเลนส์แม่เหล็กไฟฟ้า",
+  "t": "กล้องอิเล็กตรอน"
+ },
+ {
+  "q": "กล้องจุลทรรศน์อิเล็กตรอนแบบส่องผ่าน (TEM) ให้ภาพลักษณะใด?",
+  "c": [
+   "ภาพ 2 มิติ ขาวดำ แสดงที่จอรับภาพ",
+   "ภาพ 3 มิติ ขาวดำ แสดงที่จอรับภาพ",
+   "ภาพ 2 มิติ สี แสดงที่จอรับภาพ",
+   "ภาพ 3 มิติ เสมือนหัวตั้ง",
+   "ภาพ 2 มิติ เสมือนหัวกลับ กลับซ้ายเป็นขวา"
+  ],
+  "a": 0,
+  "e": "TEM ให้ภาพ 2 มิติ ขาวดำ แสดงที่จอรับภาพของกล้อง",
+  "t": "TEM"
+ },
+ {
+  "q": "ตัวอย่างที่จะศึกษาด้วย TEM ต้องเตรียมอย่างไร?",
+  "c": [
+   "ต้องเป็นชิ้นที่บางมาก และย้อมด้วยสารประกอบโลหะหนัก",
+   "ต้องเคลือบด้วยทองคำก่อนนำไปศึกษา",
+   "ต้องเป็นสิ่งมีชีวิตที่ยังมีชีวิตอยู่",
+   "ต้องหนาและทึบแสงเพื่อสะท้อนอิเล็กตรอน",
+   "ต้องแช่ในน้ำเกลือแล้ววางบนสไลด์"
+  ],
+  "a": 0,
+  "e": "ตัวอย่างต้องมีชิ้นที่บาง และย้อมด้วยสารประกอบโลหะหนัก",
+  "t": "TEM"
+ },
+ {
+  "q": "ปัจจุบัน TEM ถูกพัฒนาจนมีกำลังขยายสูงสุดประมาณเท่าใด?",
+  "c": [
+   "1 ล้านเท่า",
+   "400,000 เท่า",
+   "1,000 เท่า",
+   "100,000 เท่า",
+   "10 ล้านเท่า"
+  ],
+  "a": 0,
+  "e": "TEM ถูกพัฒนาจนมีกำลังขยายสูงสุดประมาณ 1 ล้านเท่า",
+  "t": "TEM"
+ },
+ {
+  "q": "กล้องจุลทรรศน์อิเล็กตรอนแบบส่องกราด (SEM) ให้ภาพลักษณะใด?",
+  "c": [
+   "ภาพ 3 มิติ ขาวดำ แสดงที่จอรับภาพ",
+   "ภาพ 2 มิติ ขาวดำ แสดงที่จอรับภาพ",
+   "ภาพ 3 มิติ สีธรรมชาติ",
+   "ภาพ 2 มิติ เสมือนหัวกลับ",
+   "ภาพ 3 มิติ เสมือนหัวตั้งผ่านเลนส์ใกล้ตา"
+  ],
+  "a": 0,
+  "e": "SEM ให้ภาพ 3 มิติ ขาวดำ แสดงที่จอรับภาพ",
+  "t": "SEM"
+ },
+ {
+  "q": "ตัวอย่างที่ศึกษาด้วย SEM ต้องเคลือบด้วยสารใดก่อนนำไปศึกษา?",
+  "c": [
+   "ทองคำ",
+   "สารประกอบโลหะหนัก",
+   "เงิน",
+   "คาร์บอนเหลว",
+   "พาราฟิน"
+  ],
+  "a": 0,
+  "e": "ตัวอย่างจะต้องเคลือบด้วยทองคำก่อนนำไปศึกษา และเป็นสิ่งไม่มีชีวิต",
+  "t": "SEM"
+ },
+ {
+  "q": "ปัจจุบัน SEM มีกำลังขยายสูงสุดประมาณเท่าใด?",
+  "c": [
+   "400,000 เท่า",
+   "1 ล้านเท่า",
+   "40,000 เท่า",
+   "1,000 เท่า",
+   "4,000,000 เท่า"
+  ],
+  "a": 0,
+  "e": "SEM มีกำลังขยายสูงสุดประมาณ 400,000 เท่า",
+  "t": "SEM"
+ },
+ {
+  "q": "SEM ใช้ศึกษาสิ่งใดเป็นหลัก?",
+  "c": [
+   "พื้นผิวของตัวอย่างที่ต้องการศึกษา",
+   "โครงสร้างภายในของเซลล์ที่บางมาก",
+   "การจัดเรียงเซลล์ในระดับเนื้อเยื่อ",
+   "สิ่งมีชีวิตขนาดเล็กที่ยังมีชีวิต",
+   "โครงสร้างภายในของออร์แกเนลล์ที่ย้อมโลหะหนัก"
+  ],
+  "a": 0,
+  "e": "SEM ใช้ศึกษาพื้นผิวของตัวอย่างที่ต้องการศึกษา",
+  "t": "SEM"
+ },
+ {
+  "q": "ใน SEM ส่วนใดทำหน้าที่ควบคุมลำอิเล็กตรอนให้กราดไปบนผิวของตัวอย่าง?",
+  "c": [
+   "ขดลวดส่องกราด",
+   "เลนส์ฉาย",
+   "ม่านปรับแสง",
+   "จานหมุน",
+   "เลนส์ใกล้ตา"
+  ],
+  "a": 0,
+  "e": "ลำอิเล็กตรอนผ่านเลนส์รวม แล้วผ่านขดลวดส่องกราดเพื่อควบคุมให้กราดไปบนผิวตัวอย่าง",
+  "t": "SEM"
+ },
+ {
+  "q": "ข้อใดคือความแตกต่างที่ถูกต้องระหว่าง TEM และ SEM?",
+  "c": [
+   "TEM ศึกษาโครงสร้างภายในให้ภาพ 2 มิติ ส่วน SEM ศึกษาพื้นผิวให้ภาพ 3 มิติ",
+   "TEM ศึกษาพื้นผิวให้ภาพ 3 มิติ ส่วน SEM ศึกษาโครงสร้างภายในให้ภาพ 2 มิติ",
+   "TEM ใช้แสงธรรมชาติ ส่วน SEM ใช้ลำอิเล็กตรอน",
+   "TEM ให้ภาพสี ส่วน SEM ให้ภาพขาวดำ",
+   "TEM มีกำลังขยายต่ำกว่ากล้องใช้แสงเชิงประกอบ"
+  ],
+  "a": 0,
+  "e": "TEM ใช้ศึกษาโครงสร้างภายในให้ภาพ 2 มิติขาวดำ ส่วน SEM ใช้ศึกษาพื้นผิวให้ภาพ 3 มิติขาวดำ",
+  "t": "เปรียบเทียบ"
+ },
+ {
+  "q": "ข้อใดกล่าวถูกต้องเกี่ยวกับตัวอย่างที่ใช้ศึกษา?",
+  "c": [
+   "กล้องใช้แสงศึกษาได้ทั้งสิ่งมีชีวิตและไม่มีชีวิต แต่ SEM ศึกษาได้เฉพาะสิ่งไม่มีชีวิต",
+   "กล้องใช้แสงศึกษาได้เฉพาะสิ่งมีชีวิต แต่ SEM ศึกษาได้ทุกอย่าง",
+   "TEM ศึกษาได้เฉพาะสิ่งมีชีวิตที่ยังมีชีวิตอยู่",
+   "กล้องสเตอริโอศึกษาได้เฉพาะสิ่งไม่มีชีวิต",
+   "ทุกชนิดของกล้องศึกษาได้เฉพาะสิ่งมีชีวิตที่ตายแล้ว"
+  ],
+  "a": 0,
+  "e": "กล้องใช้แสงศึกษาตัวอย่างที่เป็นสิ่งมีชีวิตหรือไม่มีชีวิตก็ได้ ส่วน SEM ตัวอย่างต้องเคลือบทองคำและเป็นสิ่งไม่มีชีวิต",
+  "t": "เปรียบเทียบ"
+ },
+ {
+  "q": "เพราะเหตุใดกล้องสเตอริโอจึงมีกำลังขยายต่ำกว่ากล้องเชิงประกอบ?",
+  "c": [
+   "เพราะออกแบบมาเพื่อดูโครงสร้างภายนอกของวัตถุทึบแสง จึงใช้กำลังขยาย 30–40 เท่า",
+   "เพราะใช้เลนส์ใกล้ตาเพียงชิ้นเดียว",
+   "เพราะไม่มีแหล่งกำเนิดแสงในตัวกล้อง",
+   "เพราะใช้ลำอิเล็กตรอนแทนแสง",
+   "เพราะไม่มีเลนส์ใกล้วัตถุ"
+  ],
+  "a": 0,
+  "e": "กล้องสเตอริโอใช้ดูโครงสร้างภายนอกของวัตถุทึบแสง มีกำลังขยายประมาณ 30–40 เท่า ซึ่งต่ำกว่ากล้องเชิงประกอบ",
+  "t": "เปรียบเทียบ"
+ },
+ {
+  "q": "เลนส์รวมแสง (condenser lens) ทำหน้าที่ใด?",
+  "c": [
+   "รวมแสงจากแหล่งกำเนิดแสง",
+   "ขยายภาพของวัตถุ",
+   "ขยายภาพจากเลนส์ใกล้วัตถุ",
+   "หมุนเปลี่ยนเลนส์ใกล้วัตถุ",
+   "รองรับสไลด์ตัวอย่าง"
+  ],
+  "a": 0,
+  "e": "เลนส์รวมแสงทำหน้าที่รวมแสงจากแหล่งกำเนิดแสง",
+  "t": "ส่วนประกอบ"
+ },
+ {
+  "q": "ลำกล้อง (body tube) ของกล้องเชิงประกอบมีลักษณะอย่างไร?",
+  "c": [
+   "มีเลนส์ใกล้ตาติดด้านบน ส่วนด้านล่างติดกับจานหมุนซึ่งมีเลนส์ใกล้วัตถุติดอยู่",
+   "มีเลนส์ใกล้วัตถุติดด้านบน ส่วนด้านล่างติดกับเลนส์รวมแสง",
+   "มีแหล่งกำเนิดแสงติดด้านบน ส่วนด้านล่างเป็นฐาน",
+   "มีม่านปรับแสงติดด้านบน ส่วนด้านล่างเป็นแท่นวางวัตถุ",
+   "เป็นส่วนที่ใช้จับเพื่อยกเคลื่อนย้ายกล้อง"
+  ],
+  "a": 0,
+  "e": "ลำกล้องมีเลนส์ใกล้ตาติดอยู่ด้านบน ด้านล่างติดกับจานหมุนซึ่งมีเลนส์ใกล้วัตถุติดอยู่",
+  "t": "ส่วนประกอบ"
+ }
+];
+
+
+/* ============================================================
+   MODULE 1 · CONFIG
+   ============================================================ */
+const CFG = {
+  roundQuestions: 10,
+  timePerQuestion: 22,   // s — answer phase (after the reading phase)
+  scoreRight: 10,
+  scoreWrong: -5,
+  bladeLife: 340,        // ms a trail point survives
+  minSliceSpeed: 520,    // px/s — must move this fast to cut
+  spawnGravity: 1500,    // px/s^2 — recomputed per viewport in Game.resize()
+  hangTime: 8.0,         // s — total flight: launch -> apex -> back off screen
+  readTime: 15,          // s — question shown alone before answers fly
+  apexFrac: 0.45,        // apex height as fraction of screen (0 = top)
+  cardStagger: 3000,     // ms between each answer launching (scaled to hangTime)
+  cardW: 210, cardH: 108,
+  handConf: 0.62,
+  palette: ['#FFE9A8','#CDB6F0','#F9BCD8','#A9D9F5','#B7E4C7'],
+  paletteEdge: ['#F5C842','#8B5FD6','#E8619D','#3B9FE0','#2E9E5B'],
+};
+const TIPS = [4, 8, 12, 16, 20];  // fingertip landmark indices
+const HAND_BONES = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],
+  [0,17]
+];
+
+const $ = s => document.querySelector(s);
+const rand = (a,b) => a + Math.random()*(b-a);
+const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
+const shuffle = a => { a=[...a]; for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]];} return a; };
+
+/* ============================================================
+   MODULE 2 · WEBCAM  (ระบบเปิดกล้อง Webcam)
+   ============================================================ */
+const Camera = {
+  video: $('#cam'),
+  stream: null,
+  async start(){
+    if(!navigator.mediaDevices?.getUserMedia)
+      throw new Error('เบราว์เซอร์นี้ไม่รองรับการเข้าถึงกล้อง กรุณาใช้ Google Chrome หรือ Microsoft Edge');
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:{ideal:1280}, height:{ideal:720}, facingMode:'user' }, audio:false
+    });
+    this.video.srcObject = this.stream;
+    await this.video.play();
+    await new Promise(r=>{
+      if(this.video.videoWidth) return r();
+      this.video.onloadedmetadata = r;
+    });
+    return this.video;
+  },
+  stop(){ this.stream?.getTracks().forEach(t=>t.stop()); this.stream=null; },
+  get w(){ return this.video.videoWidth || 1280 },
+  get h(){ return this.video.videoHeight || 720 }
+};
+
+/* ============================================================
+   MODULE 3 · MEDIAPIPE HANDS  (ระบบ MediaPipe Hands)
+   ============================================================ */
+const Hands = {
+  landmarker: null,
+  lastTs: -1,
+  results: null,
+  async load(onProgress){
+    onProgress?.('กำลังโหลดโมเดลตรวจจับมือ…');
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const files = await vision.FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    this.landmarker = await vision.HandLandmarker.createFromOptions(files, {
+      baseOptions:{
+        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate:'GPU'
+      },
+      runningMode:'VIDEO',
+      numHands:2,
+      minHandDetectionConfidence:CFG.handConf,
+      minHandPresenceConfidence:0.5,
+      minTrackingConfidence:0.5
+    });
+    return this.landmarker;
+  },
+  detect(video, ts){
+    if(!this.landmarker) return null;
+    if(ts === this.lastTs) return this.results;
+    this.lastTs = ts;
+    try{ this.results = this.landmarker.detectForVideo(video, ts); }
+    catch(e){ /* frame not ready */ }
+    return this.results;
+  }
+};
+
+/* ============================================================
+   MODULE 4 · FINGERTIP TRACKING  (ระบบติดตามปลายนิ้ว)
+   Converts normalised landmarks -> mirrored canvas space,
+   keeps a velocity-aware trail per tracked point.
+   ============================================================ */
+class Tracker {
+  constructor(){ this.hands = []; this.points = []; }
+
+  update(res, W, H, now){
+    this.hands = [];
+    this.points = [];
+    if(!res?.landmarks?.length) return;
+
+    res.landmarks.forEach((lm, hi) => {
+      // mirror X so it matches the flipped video
+      const pts = lm.map(p => ({ x:(1-p.x)*W, y:p.y*H, z:p.z }));
+      this.hands.push(pts);
+
+      // fingertips + palm centre act as blades
+      const ids = [...TIPS, 9];
+      ids.forEach(i => {
+        const p = pts[i];
+        const key = hi+'-'+i;
+        const prev = this._prev?.get(key);
+        let vx=0, vy=0;
+        if(prev){
+          const dt = Math.max((now - prev.t)/1000, 1/120);
+          vx = (p.x - prev.x)/dt; vy = (p.y - prev.y)/dt;
+        }
+        this.points.push({ key, x:p.x, y:p.y, vx, vy,
+          speed:Math.hypot(vx,vy), isPalm:i===9, hand:hi });
+      });
+    });
+
+    const m = new Map();
+    this.points.forEach(p => m.set(p.key, {x:p.x, y:p.y, t:now}));
+    this._prev = m;
+  }
+  get active(){ return this.hands.length > 0 }
+}
+
+/* ============================================================
+   MODULE 5 · BLADE TRAIL  (ระบบเลือกและลากการ์ด — ลากเส้นดาบ)
+   ============================================================ */
+class Blade {
+  constructor(){ this.trails = new Map(); }
+  push(points, now){
+    points.forEach(p => {
+      if(p.isPalm) return;
+      if(!this.trails.has(p.key)) this.trails.set(p.key, []);
+      const t = this.trails.get(p.key);
+      t.push({ x:p.x, y:p.y, t:now, hot:p.speed > CFG.minSliceSpeed });
+      while(t.length && now - t[0].t > CFG.bladeLife) t.shift();
+      if(t.length > 26) t.shift();
+    });
+    // prune vanished hands
+    for(const [k,t] of this.trails){
+      if(!points.find(p=>p.key===k)){
+        while(t.length && now - t[0].t > CFG.bladeLife) t.shift();
+        if(!t.length) this.trails.delete(k);
+      }
+    }
+  }
+  draw(ctx, now){
+    this.trails.forEach(t => {
+      if(t.length < 2) return;
+      for(let i=1;i<t.length;i++){
+        const a=t[i-1], b=t[i];
+        const age = (now - b.t)/CFG.bladeLife;
+        const k = 1 - clamp(age,0,1);
+        if(k<=0) continue;
+        ctx.save();
+        ctx.lineCap='round'; ctx.lineJoin='round';
+        // glow
+        ctx.strokeStyle = b.hot ? `rgba(255,233,168,${.5*k})` : `rgba(169,217,245,${.32*k})`;
+        ctx.lineWidth = 22*k; ctx.globalCompositeOperation='lighter';
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        // core
+        ctx.strokeStyle = `rgba(255,255,255,${.9*k})`;
+        ctx.lineWidth = Math.max(2, 7*k);
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+  clear(){ this.trails.clear(); }
+}
+
+/* ============================================================
+   MODULE 6 · ANSWER CARD  (ก้อนคำตอบ)
+   ============================================================ */
+class Card {
+  constructor(text, idx, correct, x, y, vx, vy, color){
+    this.text=text; this.idx=idx; this.correct=correct;
+    this.x=x; this.y=y; this.vx=vx; this.vy=vy;
+    this.color=color; this.edge=CFG.paletteEdge[color];
+    this.fill=CFG.palette[color];
+    this.rot=rand(-.16,.16); this.vr=rand(-.5,.5);
+    this.w=CFG.cardW; this.h=CFG.cardH;
+    this.dead=false; this.cut=false; this.cutAt=0; this.spawn=performance.now();
+    this.lines=null;
+  }
+  step(dt, H){
+    if(this.cut) { this.vy += CFG.spawnGravity*1.4*dt; }
+    else this.vy += CFG.spawnGravity*dt;
+    this.x += this.vx*dt; this.y += this.vy*dt; this.rot += this.vr*dt;
+    if(this.y > H + 220) this.dead = true;
+  }
+  hit(px,py){
+    // rotated rect test
+    const dx=px-this.x, dy=py-this.y;
+    const c=Math.cos(-this.rot), s=Math.sin(-this.rot);
+    const lx=dx*c-dy*s, ly=dx*s+dy*c;
+    return Math.abs(lx)<=this.w/2 && Math.abs(ly)<=this.h/2;
+  }
+  draw(ctx, now){
+    ctx.save();
+    ctx.translate(this.x,this.y); ctx.rotate(this.rot);
+    const pop = clamp((now-this.spawn)/180,0,1);
+    const sc = this.cut ? clamp(1-(now-this.cutAt)/260,0,1) : (0.6+0.4*pop);
+    ctx.scale(sc,sc);
+    ctx.globalAlpha = this.cut ? clamp(1-(now-this.cutAt)/280,0,1) : 1;
+
+    const w=this.w,h=this.h,r=22;
+    // drop shadow
+    ctx.shadowColor='rgba(30,20,60,.45)'; ctx.shadowBlur=22; ctx.shadowOffsetY=9;
+    ctx.fillStyle=this.fill;
+    this._round(ctx,-w/2,-h/2,w,h,r); ctx.fill();
+    ctx.shadowColor='transparent';
+    // gloss
+    const g=ctx.createLinearGradient(0,-h/2,0,h/2);
+    g.addColorStop(0,'rgba(255,255,255,.62)'); g.addColorStop(.55,'rgba(255,255,255,0)');
+    ctx.fillStyle=g; this._round(ctx,-w/2,-h/2,w,h,r); ctx.fill();
+    // edge
+    ctx.strokeStyle=this.edge; ctx.lineWidth=3.5;
+    this._round(ctx,-w/2,-h/2,w,h,r); ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.4;
+    this._round(ctx,-w/2+3,-h/2+3,w-6,h-6,r-3); ctx.stroke();
+
+    // text
+    ctx.fillStyle='#3D3557'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    let fs=16;
+    if(!this.lines){
+      // wrap once, shrink to fit
+      for(fs=16; fs>=10; fs--){
+        ctx.font=`600 ${fs}px Sarabun, sans-serif`;
+        const ls=this._wrap(ctx,this.text,w-24);
+        if(ls.length*(fs+4) <= h-20){ this.lines=ls; this.fs=fs; break; }
+        if(fs===10){ this.lines=ls.slice(0,4); this.fs=10; }
+      }
+    }
+    ctx.font=`600 ${this.fs}px Sarabun, sans-serif`;
+    const lh=this.fs+4, st=-(this.lines.length-1)*lh/2;
+    this.lines.forEach((l,i)=>ctx.fillText(l,0,st+i*lh));
+    ctx.restore();
+  }
+  _round(ctx,x,y,w,h,r){
+    ctx.beginPath(); ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  _wrap(ctx,txt,max){
+    // Thai has no spaces between words, so a naive per-character break can
+    // orphan a vowel/tone mark (ย้า ย) or split a word in half.
+    // 1) break on real Thai word boundaries via Intl.Segmenter (Chrome/Edge)
+    // 2) never break inside a grapheme cluster (base char + its marks)
+    const out=[]; let line='';
+    const push = s => { if(line) out.push(line); line=s; };
+
+    for(const chunk of Card._tokens(txt)){
+      if(!chunk) continue;
+      if(ctx.measureText(line+chunk).width <= max){ line += chunk; continue; }
+      if(ctx.measureText(chunk).width > max){
+        // single token still too wide — break it, but only between clusters
+        for(const g of Card._clusters(chunk)){
+          if(ctx.measureText(line+g).width > max) push(g);
+          else line += g;
+        }
+      } else push(chunk.trim()? chunk : '');
+    }
+    if(line) out.push(line);
+    return out.map(s=>s.trim()).filter(Boolean);
+  }
+
+  // split into words: Thai word boundaries where supported, else whitespace
+  static _tokens(txt){
+    if(!Card.__seg){
+      try{ Card.__seg = new Intl.Segmenter('th',{granularity:'word'}); }
+      catch(e){ Card.__seg = null; }
+    }
+    if(Card.__seg){
+      try{ return [...Card.__seg.segment(txt)].map(s=>s.segment); }
+      catch(e){ /* fall through */ }
+    }
+    return txt.split(/(\s+)/);
+  }
+
+  // split into grapheme clusters so combining marks stay with their base char
+  static _clusters(s){
+    if(!Card.__gseg){
+      try{ Card.__gseg = new Intl.Segmenter('th',{granularity:'grapheme'}); }
+      catch(e){ Card.__gseg = null; }
+    }
+    if(Card.__gseg){
+      try{ return [...Card.__gseg.segment(s)].map(g=>g.segment); }
+      catch(e){ /* fall through */ }
+    }
+    // manual fallback: attach Thai combining marks to the preceding base char
+    const isMark = c => { const n=c.codePointAt(0);
+      return n===0x0E31 || (n>=0x0E34 && n<=0x0E3A) || (n>=0x0E47 && n<=0x0E4E); };
+    const out=[];
+    for(const c of s){
+      if(out.length && isMark(c)) out[out.length-1] += c;
+      else out.push(c);
+    }
+    return out;
+  }
+}
+/* ============================================================
+   MODULE 7 · COLLISION DETECTION  (ระบบตรวจจับการชน)
+   Segment-vs-card sweep so fast hands never tunnel through.
+   ============================================================ */
+const Collision = {
+  check(cards, tracker, blade, now){
+    const hits = [];
+    tracker.points.forEach(p => {
+      if(p.isPalm) return;
+      if(p.speed < CFG.minSliceSpeed) return;   // must be a real slash
+      const trail = blade.trails.get(p.key);
+      if(!trail || trail.length < 2) return;
+      const prev = trail[trail.length-2], cur = trail[trail.length-1];
+
+      cards.forEach(c => {
+        if(c.cut || c.dead) return;
+        if(this._segRect(prev.x,prev.y,cur.x,cur.y,c)){
+          hits.push({ card:c, x:cur.x, y:cur.y,
+            angle:Math.atan2(p.vy,p.vx), speed:p.speed });
+        }
+      });
+    });
+    return hits;
+  },
+  // sample the segment; cheap and robust for card-sized targets
+  _segRect(x1,y1,x2,y2,card){
+    const d = Math.hypot(x2-x1, y2-y1);
+    const steps = clamp(Math.ceil(d/12), 2, 26);
+    for(let i=0;i<=steps;i++){
+      const t=i/steps;
+      if(card.hit(x1+(x2-x1)*t, y1+(y2-y1)*t)) return true;
+    }
+    return false;
+  }
+};
+
+/* ============================================================
+   MODULE 8 · SCORE  (ระบบคะแนน)
+   ============================================================ */
+const Score = {
+  value:0, right:0, wrong:0, skipped:0, streak:0, best:0,
+  reset(){ Object.assign(this,{value:0,right:0,wrong:0,skipped:0,streak:0,best:0}); this.render(); },
+  add(n){
+    this.value += n;
+    if(n>0){ this.right++; this.streak++; this.best=Math.max(this.best,this.streak); }
+    else { this.wrong++; this.streak=0; }
+    this.render();
+  },
+  skip(){ this.skipped++; this.streak=0; this.render(); },
+  render(){
+    $('#v-score').textContent = this.value;
+    $('#v-streak').textContent = this.streak;
+  }
+};
+
+/* ============================================================
+   MODULE 9 · TIMER  (ระบบจับเวลา)
+   ============================================================ */
+const Timer = {
+  left:0, total:0, on:false, _last:0,
+  start(sec){ this.total=sec; this.left=sec; this.on=true; this._last=performance.now(); this.render(); },
+  stop(){ this.on=false; },
+  tick(now){
+    if(!this.on) return false;
+    this.left -= (now - this._last)/1000; this._last = now;
+    if(this.left <= 0){ this.left=0; this.on=false; this.render(); return true; }
+    this.render(); return false;
+  },
+  render(){
+    const s = Math.ceil(this.left);
+    $('#v-time').textContent = s;
+    $('#timefill').style.width = (this.left/this.total*100)+'%';
+    $('#p-time').classList.toggle('warn', this.left<=5 && this.on);
+  }
+};
+
+/* ============================================================
+   MODULE 10 · FX — particles, sound, skeleton  (ระบบเอฟเฟกต์ภาพและเสียง)
+   ============================================================ */
+const Particles = {
+  list:[],
+  burst(x,y,color,n=22,power=1){
+    for(let i=0;i<n;i++){
+      const a=rand(0,Math.PI*2), s=rand(120,520)*power;
+      this.list.push({ x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-120,
+        r:rand(3,9), life:1, color, spin:rand(-8,8), rot:0 });
+    }
+  },
+  step(dt){
+    this.list.forEach(p=>{
+      p.vy += 1200*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+      p.rot+=p.spin*dt; p.life -= dt*1.5;
+    });
+    this.list = this.list.filter(p=>p.life>0);
+  },
+  draw(ctx){
+    this.list.forEach(p=>{
+      ctx.save(); ctx.globalAlpha=clamp(p.life,0,1);
+      ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillStyle=p.color;
+      ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r);
+      ctx.restore();
+    });
+  },
+  clear(){ this.list=[] }
+};
+
+const Sound = {
+  ctx:null,
+  init(){ if(!this.ctx) this.ctx = new (window.AudioContext||window.webkitAudioContext)(); },
+  _tone(freq, dur, type='sine', vol=.18, slide=0){
+    if(!this.ctx) return;
+    const t=this.ctx.currentTime;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,freq+slide), t+dur);
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(vol,t+.012);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t+dur+.02);
+  },
+  right(){ this.init(); [523.25,659.25,783.99,1046.5].forEach((f,i)=>setTimeout(()=>this._tone(f,.24,'triangle',.16),i*62)); },
+  wrong(){ this.init(); this._tone(300,.28,'sawtooth',.12,-160); },
+  slash(){ this.init(); this._tone(1500,.06,'square',.05,-900); },
+  tickTock(){ this.init(); this._tone(880,.05,'sine',.05); },
+  timeout(){ this.init(); [440,330].forEach((f,i)=>setTimeout(()=>this._tone(f,.3,'sine',.12),i*140)); },
+  finish(){ this.init(); [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>this._tone(f,.4,'triangle',.15),i*110)); }
+};
+
+const Skeleton = {
+  draw(ctx, hands, now){
+    hands.forEach(pts=>{
+      // bones
+      ctx.save();
+      ctx.lineCap='round';
+      ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=5;
+      HAND_BONES.forEach(([a,b])=>{
+        ctx.beginPath(); ctx.moveTo(pts[a].x,pts[a].y); ctx.lineTo(pts[b].x,pts[b].y); ctx.stroke();
+      });
+      ctx.strokeStyle='rgba(139,95,214,.9)'; ctx.lineWidth=2.2;
+      HAND_BONES.forEach(([a,b])=>{
+        ctx.beginPath(); ctx.moveTo(pts[a].x,pts[a].y); ctx.lineTo(pts[b].x,pts[b].y); ctx.stroke();
+      });
+      // joints
+      pts.forEach((p,i)=>{
+        const tip = TIPS.includes(i);
+        ctx.fillStyle = tip ? '#FFE9A8' : 'rgba(255,255,255,.9)';
+        ctx.beginPath(); ctx.arc(p.x,p.y, tip?5:3.2, 0, 7); ctx.fill();
+      });
+      // glowing ring on the palm
+      const palm = pts[9], puls = 1 + Math.sin(now/240)*.12;
+      const R = 42*puls;
+      const g = ctx.createRadialGradient(palm.x,palm.y,R*.25, palm.x,palm.y,R);
+      g.addColorStop(0,'rgba(249,188,216,.34)');
+      g.addColorStop(.7,'rgba(205,182,240,.16)');
+      g.addColorStop(1,'rgba(169,217,245,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(palm.x,palm.y,R,0,7); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,.75)'; ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.arc(palm.x,palm.y,R,0,7); ctx.stroke();
+      ctx.strokeStyle='rgba(255,233,168,.9)'; ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.arc(palm.x,palm.y,R*.72,0,7); ctx.stroke();
+      ctx.restore();
+    });
+  }
+};
+
+/* ============================================================
+   MODULE 11 · MATCHING ENGINE  (ระบบจับคู่)
+   Owns the question queue, spawns cards, resolves a cut.
+   ============================================================ */
+const Matcher = {
+  queue:[], idx:0, current:null, cards:[], log:[], locked:false, waveAt:0,
+  pending:[], lanes:[], laneAt:0, nextLaunch:0, solved:new Set(), phase:'read',
+
+  newRound(){
+    this.queue = shuffle(QUESTIONS).slice(0, CFG.roundQuestions);
+    this.idx = 0; this.log = []; this.cards = []; this.locked=false;
+  },
+  get done(){ return this.idx >= this.queue.length },
+
+  loadQuestion(){
+    if(this.done) return false;
+    const q = this.queue[this.idx];
+    const order = shuffle(q.c.map((t,i)=>({t, ok:i===q.a})));
+    this.current = { ...q, order, answered:false };
+    this.cards = [];
+    this.locked = false;
+    this.pending = [];
+    this.solved = new Set();   // answers already cut — don't re-launch them
+
+    $('#qnum').textContent = `ข้อ ${this.idx+1}/${this.queue.length}`;
+    $('#qtopic').textContent = q.t;
+    $('#qtext').textContent = q.q;
+    $('#v-prog').textContent = `${this.idx}/${this.queue.length}`;
+
+    // PHASE 1 — reading. Question only, no answers yet.
+    this.phase = 'read';
+    $('#readnote').classList.add('on');
+    $('#p-time').classList.add('reading');
+    $('#timelabel').textContent = 'อ่านคำถาม';
+    Timer.start(CFG.readTime);
+    return true;
+  },
+
+  // PHASE 2 — answers start flying. Same screen, question stays pinned on top.
+  beginAnswers(){
+    this.phase = 'play';
+    $('#readnote').classList.remove('on');
+    $('#p-time').classList.remove('reading');
+    $('#timelabel').textContent = 'เวลา';
+    this.spawnWave(true);
+    Timer.start(CFG.timePerQuestion);
+  },
+
+  // queue the 5 answer blocks so they launch ONE AT A TIME, fruit-ninja style
+  spawnWave(first=false){
+    const list = this.current.order.map((o,i)=>({...o, i}));
+    // pending = answers still waiting for their turn to fly
+    this.pending = shuffle(list);
+    this.lanes = shuffle([...Array(list.length).keys()]);
+    this.laneAt = 0;
+    this.nextLaunch = performance.now();   // first one goes immediately
+  },
+
+  // launch a single card from the pending queue
+  launchOne(now){
+    if(!this.pending || !this.pending.length) return;
+    const o = this.pending.shift();
+    const W = Game.W, H = Game.H;
+    const n = this.current.order.length;
+    const lane = this.lanes[this.laneAt++ % n];
+    const slot = W/(n+1)*(lane+1);
+    const x = clamp(slot + rand(-30,30), CFG.cardW*0.6, W-CFG.cardW*0.6);
+    const y = H + CFG.cardH;
+    // velocity that yields the configured hang time (gravity is viewport-derived)
+    const vy = -CFG.spawnGravity*(CFG.hangTime/2);
+    // gentle drift toward centre. Scale by hangTime so a long, floaty flight
+    // doesn't carry the card clear across the screen.
+    const vx = (W/2 - x)*rand(.10,.22)*(2.0/CFG.hangTime);
+    this.cards.push(new Card(o.t, o.i, o.ok, x, y, vx, vy, o.i % CFG.palette.length));
+    this.nextLaunch = now + CFG.cardStagger;
+    this.waveAt = now;
+  },
+
+  step(dt, H, now){
+    if(this.phase !== 'play') return;   // reading phase: nothing flies yet
+    this.cards.forEach(c=>c.step(dt,H));
+
+    // launch the next queued answer when its turn comes up
+    if(!this.locked && this.pending && this.pending.length && now >= this.nextLaunch){
+      this.launchOne(now);
+    }
+
+    // remove cards that fell away or finished their cut animation
+    const missed = this.cards.filter(c=> c.dead && !c.cut);
+    this.cards = this.cards.filter(c=> !c.dead && !(c.cut && now-c.cutAt>320));
+
+    // once every answer has flown and none are left on screen, recycle the
+    // ones the player never cut so the question stays answerable
+    if(!this.locked && !this.pending.length && !this.cards.length){
+      const uncut = this.current.order
+        .map((o,i)=>({...o, i}))
+        .filter(o => !this.solved?.has(o.i));
+      if(uncut.length){
+        this.pending = shuffle(uncut);
+        this.lanes = shuffle([...Array(this.current.order.length).keys()]);
+        this.laneAt = 0;
+        this.nextLaunch = now + 400;
+      }
+    }
+  },
+
+  resolve(hit){
+    if(this.locked) return;
+    const c = hit.card;
+    c.cut = true; c.cutAt = performance.now();
+    this.solved.add(c.idx);   // never re-launch an answer the player already cut
+    Sound.slash();
+    Particles.burst(hit.x, hit.y, c.fill, 24, 1);
+
+    if(c.correct){
+      this.locked = true;
+      Timer.stop();
+      Score.add(CFG.scoreRight);
+      Sound.right();
+      Particles.burst(c.x, c.y, '#B7E4C7', 40, 1.5);
+      Particles.burst(c.x, c.y, '#FFE9A8', 30, 1.2);
+      FX.float(hit.x, hit.y, '+10', '#2E9E5B');
+      FX.toast('ถูกต้อง! 🎉', '#B7E4C7');
+      this.log.push({ ok:true, q:this.current.q, pick:c.text, ans:c.text, ex:this.current.e });
+      setTimeout(()=>this.next(), 1050);
+    } else {
+      Score.add(CFG.scoreWrong);
+      Sound.wrong();
+      FX.float(hit.x, hit.y, '−5', '#E8619D');
+      FX.shake();
+      const already = this.log.find(l=>l._i===this.idx && !l.ok);
+      if(!already){
+        this.log.push({ _i:this.idx, ok:false, q:this.current.q, pick:c.text,
+          ans:this.current.c[this.current.a], ex:this.current.e });
+      }
+    }
+  },
+
+  timeUp(){
+    if(this.locked) return;
+    this.locked = true;
+    Score.skip();
+    Sound.timeout();
+    FX.toast('หมดเวลา ⏱️', '#A9D9F5');
+    if(!this.log.find(l=>l._i===this.idx && !l.ok)){
+      this.log.push({ _i:this.idx, ok:false, timeout:true, q:this.current.q, pick:'—',
+        ans:this.current.c[this.current.a], ex:this.current.e });
+    }
+    setTimeout(()=>this.next(), 1100);
+  },
+
+  next(){
+    this.idx++;
+    $('#v-prog').textContent = `${Math.min(this.idx,this.queue.length)}/${this.queue.length}`;
+    Particles.clear();
+    Game.blade.clear();
+    if(this.done) Game.finish();
+    else this.loadQuestion();
+  }
+};
+/* ============================================================
+   MODULE 12 · SCREEN FX helpers
+   ============================================================ */
+const FX = {
+  float(x,y,txt,color){
+    const el=document.createElement('div');
+    el.className='float'; el.textContent=txt;
+    el.style.left=x+'px'; el.style.top=y+'px'; el.style.color=color;
+    $('#stage').appendChild(el);
+    setTimeout(()=>el.remove(),1000);
+  },
+  toast(txt,color){
+    const t=$('#toast');
+    t.textContent=txt; t.style.color=color;
+    t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
+  },
+  shake(){
+    const s=$('#stage');
+    s.animate([
+      {transform:'translate(0,0)'},{transform:'translate(-9px,4px)'},
+      {transform:'translate(8px,-4px)'},{transform:'translate(-5px,2px)'},
+      {transform:'translate(0,0)'}
+    ],{duration:260,easing:'ease-out'});
+  },
+  flash(color,alpha=.28){
+    const d=document.createElement('div');
+    Object.assign(d.style,{position:'absolute',inset:'0',zIndex:2,background:color,
+      opacity:alpha,pointerEvents:'none',transition:'opacity .35s'});
+    $('#stage').appendChild(d);
+    requestAnimationFrame(()=>{ d.style.opacity='0'; setTimeout(()=>d.remove(),400); });
+  }
+};
+
+/* ============================================================
+   MODULE 13 · GAME LOOP  (ตัวควบคุมหลัก)
+   ============================================================ */
+const Game = {
+  cv:$('#fx'), ctx:null, W:0, H:0,
+  tracker:new Tracker(), blade:new Blade(),
+  running:false, raf:0, last:0, lastTick:0, noHandSince:0,
+
+  resize(){
+    const dpr = Math.min(devicePixelRatio||1, 2);
+    this.W = innerWidth; this.H = innerHeight;
+    this.cv.width = this.W*dpr; this.cv.height = this.H*dpr;
+    this.cv.style.width=this.W+'px'; this.cv.style.height=this.H+'px';
+    this.ctx = this.cv.getContext('2d');
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    // scale cards to viewport
+    CFG.cardW = clamp(this.W*0.17, 132, 230);
+    CFG.cardH = CFG.cardW*0.52;
+    // Derive gravity so a card rises from below the bottom edge to apexFrac
+    // and falls back off-screen in exactly hangTime seconds, at ANY viewport.
+    // Half the flight is the ascent: rise = 0.5*g*t^2  with t = hangTime/2
+    const rise = (this.H + CFG.cardH) - this.H*CFG.apexFrac;
+    const tUp  = CFG.hangTime/2;
+    CFG.spawnGravity = 2*rise/(tUp*tUp);
+  },
+
+  async boot(){
+    const err=$('#err-start'), load=$('#load'), btn=$('#btn-start');
+    err.classList.remove('on'); load.classList.add('on'); btn.disabled=true;
+    try{
+      $('#loadtxt').textContent='กำลังขอสิทธิ์ใช้กล้อง…';
+      await Camera.start();
+      await Hands.load(m=>$('#loadtxt').textContent=m);
+      $('#loadtxt').textContent='พร้อมแล้ว!';
+      load.classList.remove('on'); btn.disabled=false;
+      $('#pnl-start').classList.add('hide');
+      $('#pnl-end').classList.add('hide');
+      $('#camtag').classList.add('on');
+      setTimeout(()=>$('#camtag').classList.remove('on'), 5200);
+      Sound.init();
+      this.start();
+    }catch(e){
+      load.classList.remove('on'); btn.disabled=false;
+      err.classList.add('on');
+      err.innerHTML = this._msg(e);
+      console.error(e);
+    }
+  },
+  _msg(e){
+    const n=e?.name||'';
+    if(n==='NotAllowedError'||n==='PermissionDeniedError')
+      return '<b>ไม่ได้รับสิทธิ์ใช้กล้อง</b><br>กดไอคอนกล้อง 📷 ที่แถบที่อยู่ของเบราว์เซอร์ แล้วเลือก “อนุญาต” จากนั้นกดปุ่มเริ่มเล่นอีกครั้ง';
+    if(n==='NotFoundError'||n==='DevicesNotFoundError')
+      return '<b>ไม่พบกล้อง</b><br>กรุณาต่อเว็บแคมกับเครื่อง แล้วลองใหม่อีกครั้ง';
+    if(n==='NotReadableError'||n==='TrackStartError')
+      return '<b>กล้องถูกใช้งานอยู่</b><br>ปิดโปรแกรมอื่นที่ใช้กล้อง (เช่น Zoom, Teams) แล้วลองใหม่';
+    if(location.protocol==='file:')
+      return '<b>เปิดไฟล์แบบ file:// ไม่ได้</b><br>เบราว์เซอร์อนุญาตให้ใช้กล้องเฉพาะเว็บที่เปิดผ่าน https:// หรือ localhost เท่านั้น กรุณาอัปโหลดไฟล์ขึ้นเว็บโฮสต์ หรือรัน <code>python -m http.server</code> ในโฟลเดอร์นี้';
+    return '<b>เกิดข้อผิดพลาด</b><br>'+(e?.message||e);
+  },
+
+  start(){
+    this.resize();
+    Score.reset(); Particles.clear(); this.blade.clear();
+    Matcher.newRound(); Matcher.loadQuestion();
+    this.running=true; this.last=performance.now();
+    cancelAnimationFrame(this.raf);
+    this.raf=requestAnimationFrame(t=>this.loop(t));
+  },
+
+  loop(now){
+    if(!this.running) return;
+    const dt = clamp((now-this.last)/1000, 0, .05);
+    this.last = now;
+    const ctx=this.ctx;
+    ctx.clearRect(0,0,this.W,this.H);
+
+    // --- perception ---
+    const res = Hands.detect(Camera.video, now);
+    this.tracker.update(res, this.W, this.H, now);
+    this.blade.push(this.tracker.points, now);
+
+    // nudge the player if no hand is visible
+    if(this.tracker.active) this.noHandSince = now;
+    else if(now - this.noHandSince > 2600){
+      $('#camtag').classList.add('on');
+      $('#camtag').innerHTML='<b>ไม่เห็นมือ</b>ยกมือขึ้นให้อยู่ในกรอบภาพ ห่างจากกล้องประมาณ 1 ช่วงแขน';
+    }
+    if(this.tracker.active && now-this.noHandSince < 100) $('#camtag').classList.remove('on');
+
+    // --- simulation ---
+    Matcher.step(dt, this.H, now);
+    Particles.step(dt);
+
+    // --- collision -> matching ---
+    if(!Matcher.locked && Matcher.phase==='play'){
+      const hits = Collision.check(Matcher.cards, this.tracker, this.blade, now);
+      const seen = new Set();
+      hits.forEach(h=>{
+        if(seen.has(h.card)) return;
+        seen.add(h.card);
+        Matcher.resolve(h);
+      });
+    }
+
+    // --- timer ---
+    // In the reading phase, running out just means "answers, go!".
+    // In the answer phase it means the question timed out.
+    if(Timer.tick(now)){
+      if(Matcher.phase === 'read') Matcher.beginAnswers();
+      else Matcher.timeUp();
+    }
+    const s = Math.ceil(Timer.left);
+    if(Timer.on && Matcher.phase==='play' && s<=5 && s!==this.lastTick){ this.lastTick=s; Sound.tickTock(); }
+
+    // --- render ---
+    Matcher.cards.forEach(c=>c.draw(ctx, now));
+    Particles.draw(ctx);
+    Skeleton.draw(ctx, this.tracker.hands, now);
+    this.blade.draw(ctx, now);
+
+    this.raf=requestAnimationFrame(t=>this.loop(t));
+  },
+
+  /* ===== MODULE 14 · SUMMARY  (ระบบสรุปผล) ===== */
+  finish(){
+    this.running=false;
+    cancelAnimationFrame(this.raf);
+    Timer.stop();
+    Sound.finish();
+
+    const total = Matcher.queue.length;
+    const acc = total ? Math.round(Score.right/total*100) : 0;
+    $('#end-score').textContent = Score.value;
+    $('#end-ok').textContent = Score.right;
+    $('#end-no').textContent = Score.wrong;
+    $('#end-skip').textContent = Score.skipped;
+    $('#end-acc').textContent = acc+'%';
+    $('#end-best').textContent = Score.best;
+
+    let g,em,ti;
+    if(acc>=90){ g='ยอดเยี่ยม · เชี่ยวชาญกล้องจุลทรรศน์'; em='🏆'; ti='สุดยอดไปเลย!'; }
+    else if(acc>=70){ g='ดีมาก · เข้าใจเนื้อหาแน่น'; em='🌟'; ti='ทำได้ดีมาก!'; }
+    else if(acc>=50){ g='ดี · ทบทวนอีกนิดก็ผ่านฉลุย'; em='👍'; ti='ใกล้แล้ว!'; }
+    else { g='ลองใหม่ · กลับไปอ่านใบความรู้อีกครั้ง'; em='📖'; ti='สู้ต่อนะ!'; }
+    $('#end-grade').textContent=g; $('#end-emoji').textContent=em; $('#end-title').textContent=ti;
+
+    // per-question review
+    const rv=$('#end-review'); rv.innerHTML='';
+    const byQ = new Map();
+    Matcher.log.forEach(l=>{ if(l.ok || !byQ.has(l.q)) byQ.set(l.q,l); });
+    Matcher.queue.forEach((q,i)=>{
+      const l = Matcher.log.find(x=>x.q===q.q && x.ok) || Matcher.log.find(x=>x.q===q.q);
+      const ok = !!l?.ok;
+      const d=document.createElement('div');
+      d.className='rv '+(ok?'ok':'no');
+      d.innerHTML = `<div class="m">${ok?'✓':'✕'}</div>
+        <div><p>${i+1}. ${this._esc(q.q)}</p>
+        <small>เฉลย: ${this._esc(q.c[q.a])}</small>
+        ${ok?'':`<small style="color:#8B5FD6">${this._esc(q.e)}</small>`}</div>`;
+      rv.appendChild(d);
+    });
+
+    $('#pnl-end').classList.remove('hide');
+  },
+  _esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; },
+
+  /* ===== MODULE 15 · RESTART  (ระบบเริ่มเกมใหม่) ===== */
+  restart(){
+    $('#pnl-end').classList.add('hide');
+    Particles.clear(); this.blade.clear();
+    this.start();
+  },
+  home(){
+    this.running=false;
+    cancelAnimationFrame(this.raf);
+    Timer.stop(); Particles.clear(); this.blade.clear();
+    this.ctx?.clearRect(0,0,this.W,this.H);
+    Camera.stop();
+    $('#pnl-end').classList.add('hide');
+    $('#pnl-start').classList.remove('hide');
+  }
+};
+
+/* ============================================================
+   MODULE 16 · WIRING
+   ============================================================ */
+$('#btn-start').addEventListener('click', ()=>Game.boot());
+$('#btn-again').addEventListener('click', ()=>Game.restart());
+$('#btn-home').addEventListener('click', ()=>Game.home());
+addEventListener('resize', ()=>{ if(Game.ctx) Game.resize(); });
+addEventListener('keydown', e=>{
+  if(e.key==='Escape' && Game.running) Game.home();
+});
+
+// warn early if the page can't legally use a camera
+if(location.protocol==='file:'){
+  const e=$('#err-start'); e.classList.add('on');
+  e.innerHTML='<b>ต้องเปิดผ่านเว็บเซิร์ฟเวอร์</b><br>ไฟล์นี้ถูกเปิดแบบ <code>file://</code> ซึ่งเบราว์เซอร์จะไม่อนุญาตให้ใช้กล้อง<br>วิธีแก้: เปิด Terminal ในโฟลเดอร์นี้แล้วรัน <code>python -m http.server 8000</code> จากนั้นเข้า <code>http://localhost:8000</code>';
+}
+</script>
+</body>
+</html>
